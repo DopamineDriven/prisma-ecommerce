@@ -2,9 +2,105 @@ import * as dotenv from "dotenv";
 dotenv.config();
 import { Application, Request, Response } from "express";
 import { Prisma, PrismaClient } from "@prisma/client";
-import * as express from "express";
+import express, { Express } from "express";
+import { Product, Review } from ".prisma/client";
+import {} from "@prisma/client/runtime";
 const prisma = new PrismaClient();
 type ThenArg<T> = T extends PromiseLike<infer U> ? U : T;
+
+type Without<T, U> = { [P in Exclude<keyof T, keyof U>]?: never };
+
+// Needed for a mutually exclusive Union to exist (XOR)
+type XOR<T, U> = T | U extends object
+  ? (Without<T, U> & U) | (Without<U, T> & T)
+  : T | U;
+let args: any;
+const reviewFindUnique = ({
+  id,
+  text,
+  rating,
+  product,
+  description,
+  name,
+  price,
+  reviews
+}: {
+  id: string;
+  text: string;
+  rating: number;
+  product: Prisma.ProductCreateNestedOneWithoutReviewsInput;
+  name: string;
+  description: string;
+  price: number;
+  reviews?: Prisma.ReviewCreateNestedManyWithoutProductInput | undefined;
+}) => {
+  return Prisma.validator<
+    Prisma.ProductCreateInput extends Prisma.ReviewCreateInput
+      ? Prisma.ProductCreateInput & Prisma.ReviewCreateInput
+      : Prisma.ProductCreateInput & Partial<Prisma.ReviewCreateInput>
+  >()({
+    description,
+    name,
+    price,
+    text,
+    rating,
+    id,
+    product: {
+      create: ({ id, description, name, price } as typeof product) || [
+        { id, description, price, name }
+      ]
+    } as
+      | {
+          create:
+            | {
+                id: string | undefined;
+                description: string;
+                name: string;
+                price: number;
+              }
+            | {
+                id?: string | undefined;
+                name: string;
+                description: string;
+                price: number;
+              }
+            | {
+                id: string | undefined;
+                description: string;
+                name: string;
+                price: number;
+              }
+            | {
+                id?: string | undefined;
+                name: string;
+                description: string;
+                price: number;
+              }
+            | undefined;
+        }
+      | undefined,
+    reviews: {
+      create: {
+        rating: rating,
+        id: String(id ?? ""),
+        text: text
+      }
+    }
+  });
+};
+/**
+ * 
+ * //   createMany: {
+    //     data: [{ id: String(id ?? ""), rating, text }]
+    //   },
+    //   connect: { id: String((id as string) ?? "") },
+    //   connectOrCreate: {
+    //     where: { id: id as string | undefined }
+    //   }
+    // } || {
+    //   create: { text, id: String(id ?? ""), rating }
+    // }
+ */
 
 const expressWrapper = async (app: Application) => {
   app.use(express.json());
@@ -32,25 +128,28 @@ const expressWrapper = async (app: Application) => {
 
   app.post("/products", async (req: Request, res: Response) => {
     const { body } = req;
+    const id = args as Prisma.ProductScalarFieldEnum;
 
-    const product = await prisma.product.create({
-      data: {
-        name: body.name,
-        description: body.description,
-        price: body.price
-      }
-    });
+    const product: Product =
+      await prisma.product.create<Prisma.ProductCreateArgs>({
+        include: { reviews: true },
+        data: {
+          name: req.body.name,
+          description: req.body.description,
+          price: req.body.price
+        }
+      });
 
     res.json(product);
   });
-
+  const { id } = Prisma.ProductScalarFieldEnum;
+  const { where, include, select, rejectOnNotFound } =
+    args as Prisma.ReviewFindUniqueArgs;
   app.get("/reviews", async (req: Request, res: Response) => {
     const { body } = req;
-    const { text, rating, productId, id } = Prisma.ReviewScalarFieldEnum;
-
     const review = await prisma.review.findUnique({
       where: {
-        id: "cku4xfsoi0059xxsv1ugrhdkw"
+        id: String(id as string)
       },
       select: {
         id: true,
@@ -66,4 +165,6 @@ const expressWrapper = async (app: Application) => {
   console.log(`Listening on http://localhost:${PORT}/reviews`);
 };
 
-expressWrapper(express());
+// @ts-ignore
+// @ts-nocheck
+expressWrapper({ express(); });
